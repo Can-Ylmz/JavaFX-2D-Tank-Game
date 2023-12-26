@@ -14,24 +14,34 @@ import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
 import javafx.geometry.Point2D;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+
+import java.util.*;
 
 public class TankGame extends Application {
 
     private Rectangle tank; // Tankı temsil eden dikdörtgen
-    private Pane pane;
+    private Pane pane; // Map oluştur
     private java.util.Random random = new java.util.Random();
     private boolean canFire = true;
     private Point2D tankPosition;
     private List<Circle> bots = new ArrayList<>();
     private boolean canFireBot = true;
+    private boolean gameIsOver = false;
     private final long botFireRate = 1_500_000_000; // Ateş etme hızı (saniye)
+    private int destroyedBotCount = 0;
     private Map<Circle, Long> lastBotFireTimes = new HashMap<>();
+    //Bot mermisini hareketini kontrol et
+    private void moveBullet(Circle bullet, double speed) {
+        bullet.setCenterY(bullet.getCenterY() + speed);
+    }
+    // Merminin haritanın sınırlarına ulaştığında kaldır
+    private boolean isBulletOutOfPane(Circle bullet) {
+        return bullet.getCenterY() > pane.getHeight();
+    }
+
     @Override
     public void start(Stage primaryStage) {
+
         // Tankı oluştur
         tank = new Rectangle(500, 500, 30, 30);
         tank.setFill(Color.BLUE);
@@ -47,7 +57,7 @@ public class TankGame extends Application {
         Scene scene = new Scene(pane, 800, 600);
         primaryStage.setScene(scene);
 
-        // Klavye girişlerini dinle
+        // Klavye girişlerini uygun hareket et
         scene.setOnKeyPressed(e -> handleKeyPress(e.getCode()));
 
         // Oyun döngüsü
@@ -162,7 +172,7 @@ public class TankGame extends Application {
             }
 
             // Belirli bir süre geçtikten sonra bot ateş eder
-            if (System.nanoTime() - lastBotFireTimes.get(bot) > botFireRate) {
+            if (!gameIsOver && System.nanoTime() - lastBotFireTimes.get(bot) > botFireRate) {
                 fireBot(bot);
                 lastBotFireTimes.put(bot, System.nanoTime());
             }
@@ -180,7 +190,7 @@ public class TankGame extends Application {
 
         // Yeni konumu hesapla
         double newX = botPosition.getX() + direction.getX() * speed;
-        double newY = botPosition.getY() /*direction.getY() * speed*/;
+        double newY = botPosition.getY() + direction.getY() * speed;
 
         // Yeni konumu uygula
         if (random.nextDouble() * 100 >= 1 && random.nextDouble() * 100<= 5) {
@@ -190,37 +200,6 @@ public class TankGame extends Application {
             bot.setCenterY(newY);
         }
     }
-
-    // Botların mermisi tankı vurdu mu kontrolü
-    private void checkBulletBotCollision() {
-        double botSpacingX = 20; // Botlar arasındaki x eksenindeki boşluk miktarı
-        double botSpacingY = 20; // Botlar arasındaki y eksenindeki boşluk miktarı
-
-        for (int i = 0; i < bots.size(); i++) {
-            Circle bot = bots.get(i);
-
-            for (Node node : pane.getChildren()) {
-                if (node instanceof Rectangle && node.getBoundsInParent().intersects(bot.getBoundsInParent())) {
-                    // Mermi ve bot çarpışırsa
-                    pane.getChildren().remove(node); // Mermiyi kaldır
-                    canFire = true; // Yeni ateşe izin ver
-
-                    // Botu belirli bir aralık içinde rastgele bir x ve y eksenine başlat
-                    double minX = i * (botSpacingX + 2 * bot.getRadius()); // Minimum x eksen değeri
-                    double maxX = (i + 20) * botSpacingX + i * 2 * bot.getRadius(); // Maximum x eksen değeri
-                    double randomX = minX + Math.random() * (maxX - minX);
-
-                    double minY = i * (botSpacingY + 2 * bot.getRadius()); // Minimum y eksen değeri
-                    double maxY = (i + 10) * botSpacingY + i * 2 * bot.getRadius(); // Maximum y eksen değeri
-                    double randomY = minY + Math.random() * (maxY - minY);
-
-                    bot.setCenterX(randomX);
-                    bot.setCenterY(randomY);
-                }
-            }
-        }
-    }
-
 
     // Bot mermisi ateşleme
     private void fireBot(Circle bot) {
@@ -249,19 +228,48 @@ public class TankGame extends Application {
         };
         bulletTimer.start();
     }
+
+    // Botların mermisi tankı vurdu mu kontrolü
+    private void checkBulletBotCollision() {
+        double botSpacingX = 20; // Botlar arasındaki x eksenindeki boşluk miktarı
+        double botSpacingY = 20; // Botlar arasındaki y eksenindeki boşluk miktarı
+
+        for (int i = 0; i < bots.size(); i++) {
+            Circle bot = bots.get(i);
+
+            Iterator<Node> iterator = pane.getChildren().iterator();
+            while (iterator.hasNext()) {
+                Node node = iterator.next();
+                if (node instanceof Rectangle && node.getBoundsInParent().intersects(bot.getBoundsInParent())) {
+                    iterator.remove();
+                    canFire = true;
+                    // Mermi ve bot çarpışırsa
+                    pane.getChildren().remove(node); // Mermiyi kaldır
+                    canFire = true; // Yeni ateşe izin ver
+
+                    // Botu belirli bir aralık içinde rastgele bir x ve y eksenine başlat
+                    double minX = i * (botSpacingX + 2 * bot.getRadius()); // Minimum x eksen değeri
+                    double maxX = (i + 20) * botSpacingX + i * 2 * bot.getRadius(); // Maximum x eksen değeri
+                    double randomX = minX + Math.random() * (maxX - minX);
+
+                    double minY = i * (botSpacingY + 2 * bot.getRadius()); // Minimum y eksen değeri
+                    double maxY = (i + 10) * botSpacingY + i * 2 * bot.getRadius(); // Maximum y eksen değeri
+                    double randomY = minY + Math.random() * (maxY - minY);
+
+                    bot.setCenterX(randomX);
+                    bot.setCenterY(randomY);
+                    destroyedBotCount++;
+                }
+            }
+        }
+    }
+
     // Mermi ve tankın çarpışma kontrolü
     private void checkBulletTankCollision(Circle bullet) {
         if (tank.getBoundsInParent().intersects(bullet.getBoundsInParent())) {
             // Mermi ve tank çarpıştı
             gameOver(); // Oyunu bitir
         }
-    }
-    private void moveBullet(Circle bullet, double speed) {
-        bullet.setCenterY(bullet.getCenterY() + speed);
-    }
-
-    private boolean isBulletOutOfPane(Circle bullet) {
-        return bullet.getCenterY() > pane.getHeight();
     }
 
     private void removeBullet(Circle bullet, AnimationTimer timer) {
@@ -271,14 +279,20 @@ public class TankGame extends Application {
     }
     // Oyun bitişini kontrol et ve gerekli aksiyonları al
     private void gameOver() {
+
+        if (gameIsOver) {
+            return; // Oyun zaten bitmişse tekrar bitirme
+        }
+        gameIsOver = true;
+
         // Mevcut tüm çocukları temizle
         pane.getChildren().clear();
         pane.getChildren().removeIf(node -> node instanceof Bullet);
-        
+
         // "Game Over" metnini ekrana ekleyen bir Label oluştur
-        javafx.scene.text.Text gameOverText = new javafx.scene.text.Text("Game Over");
-        gameOverText.setFill(Color.RED);
-        gameOverText.setFont(Font.font("Arial", FontWeight.BOLD, 48));
+        javafx.scene.text.Text gameOverText = new javafx.scene.text.Text("Game Over\n\nDestroyed Bots: " + destroyedBotCount);
+        gameOverText.setFill(Color.BLACK);
+        gameOverText.setFont(Font.font("Arial", FontWeight.BOLD, 40));
 
         // Metni ekranın ortasına yerleştir
         double textX = (pane.getWidth() - gameOverText.getBoundsInLocal().getWidth()) / 2;
@@ -289,7 +303,7 @@ public class TankGame extends Application {
         // Game Over metnini pane'e ekle
         pane.getChildren().add(gameOverText);
 
-        // Oyunu sıfırlamak için aşağıdaki satırı ekleyebilirsiniz.
+        // Oyunu sıfırlamak için aşağıdaki satırı ekleyebiliriz.
         // resetGame();
     }
 
